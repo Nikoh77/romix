@@ -11,7 +11,7 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "program": "romix.py",
-            "args": ["--dat", "/home/nikoh/Scrivania/romix/DAT/FinalBurn.dat",
+            "args": ["--dat", "/home/nikoh/Scrivania/romix/DAT/FinalBurnNeoGeo.dat",
                      "--romset", "/home/nikoh/Scrivania/romix/ROMs"
                     ]
         }

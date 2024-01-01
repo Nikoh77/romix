@@ -5,11 +5,10 @@ import platform
 import colorlog
 import argparse
 import os
+import json
 from typing import Any, Literal
 from romset import Romset
 from ini import iniSettingsCheck, settings
-import xmltodict
-import lxml
 
 """
 Defining root variables
@@ -106,12 +105,18 @@ def argparsing() -> Romset | None:
 
 def scanner(romset: Romset, arguments: argparse.Namespace):
     print(arguments)
-    with open(file="/home/nikoh/Scrivania/romix/DAT/FinalBurn.dat", mode="r", encoding="utf-8") as file:
-        doc = xmltodict.parse(xml_input=file.read())
-        print(doc)
+    
     # fileNumber = os.listdir(arguments.romset)
-    # romset.getData(set='bioses', data='name')
-    # print(romset.bioses[8].find(path='year').text)
+    data = romset.getData(set='bioses')
+    filesList = data.keys()
+    all_files = []
+    for root, dirs, files in os.walk(top=arguments.romset):
+        for file_name in files:
+            file_path = os.path.join(root, file_name)
+            all_files.append(file_path)
+    print(all_files)
+
+        
 
 def main() -> None:
     if os_name not in supportedOs:
