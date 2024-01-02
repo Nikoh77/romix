@@ -107,14 +107,16 @@ def scanner(romset: Romset, arguments: argparse.Namespace):
     print(arguments)
     
     # fileNumber = os.listdir(arguments.romset)
-    data = romset.getData(set='bioses')
-    filesList = data.keys()
-    all_files = []
-    for root, dirs, files in os.walk(top=arguments.romset):
-        for file_name in files:
-            file_path = os.path.join(root, file_name)
-            all_files.append(file_path)
-    print(all_files)
+    data = romset.getData('parents')
+    if data == None:
+        print('nessuno')
+    # filesList = data.keys()
+    # all_files = []
+    # for root, dirs, files in os.walk(top=arguments.romset):
+    #     for file_name in files:
+    #         file_path = os.path.join(root, file_name)
+    #         all_files.append(file_path)
+    # print(all_files)
 
         
 
