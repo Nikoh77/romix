@@ -98,9 +98,8 @@ class Romset():
         {
             "name": {
                 "attributes": {
-                    "isbios": bool | str,
                     "name": str,
-                    "sourcefile": str
+                    ...
                 },
                 "subelements": {
                     "comment": str,
@@ -112,29 +111,30 @@ class Romset():
                             "name": str,
                             "size": int | str,
                             "crc": str
+                            ...
                         },
                         "name2": {
                             "name": str,
                             "size": int | str,
-                            "crc": str
+                            "crc": str,
+                            "sha": str
+                            ...
                         },
-                        # and many other roms...
+                        ...
                     },
                     "video": {
-                        "type": str,
-                        "orientation": str,
-                        "width": int | str,
-                        "height": int | str,
-                        "aspectx": int | str,
-                        "aspecty": int | str
+                        ...
                     },
                     "driver": {
                         "status": bool
+                        ...
                     }
+                    ...
                 }
             }
         }
-
+        
+        Where possible datas are converted to int and bool
         """
         if rSet not in ('bioses', 'parents', 'clones', 'all'):
             raise ValueError(f"Invalid set value: {rSet}")
@@ -151,7 +151,7 @@ class Romset():
         if 'temp' in locals().keys():
             if isinstance(locals()['temp'], tuple) and len(locals()['temp']) > 0:
                 reponse: dict = {}
-                for element in temp:
+                for element in temp: # type: ignore
                     if element.tag == 'game':
                         game = element.attrib.get('name')
                         reponse.update({game: {'attributes': {}, 'subelements': {}}})
@@ -221,7 +221,7 @@ class Romset():
                                         else:
                                             reponse[game]['subelements'][subelement.tag].update({key: value})
                             else:
-                                raise ValueError(f'Unknown subelement found scanning {str(object=game)} of {rSet}')
+                                reponse[game]['subelements'].update({subelement.tag: subelement.text})
                     else:
                         raise ValueError(f'Non-game element found scanning {rSet}')
                 return reponse
