@@ -2,13 +2,15 @@ from typing import IO, Optional, Literal, Any
 from logging import Logger
 from lxml import etree
 import sys
+
 thisLogger: Logger | None
 
 class Romset():
     """
     This class object is a simple timer implementation...
     """
-    def __init__(self, descriptor: IO[str], logger: Optional['Logger'] = None) -> None:
+    def __init__(self, descriptor: IO[str], logger: Optional['Logger'] 
+                = None) -> None:
         """
         Constructor of the class.
 
@@ -19,16 +21,17 @@ class Romset():
         thisLogger = logger
         self.descriptor = descriptor
         if not self.extract_data():
-            _tryLogger_(log='Cannot extract data, syntax error parsing xml file', level='critical')
+            _tryLogger_(log='Cannot extract data, syntax error parsing xml file',
+                        level='critical')
             sys.exit(0)
     
     def extract_data(self) -> bool:
         """
         Extract header data from the XML descriptor using lxml.
         """
-        self.bioses: list[etree._Element] = []
-        self.parents: list[etree._Element] = []
-        self.clones: list[etree._Element] = []
+        bioses: list[etree._Element] = []
+        parents: list[etree._Element] = []
+        clones: list[etree._Element] = []
         parser = etree.XMLParser(remove_blank_text=True) # some parser options here
         try:
             tree: etree._ElementTree = etree.parse(source=self.descriptor,
@@ -52,18 +55,24 @@ class Romset():
                 for element in elements:
                     if isinstance(element, etree._Element):
                         if element.get(key='isbios') == 'yes':
-                            self.bioses.append(element)
+                            bioses.append(element)
                         else:
                             if element.get(key='cloneof') is None:
-                                self.parents.append(element)
+                                parents.append(element)
                             else:
-                                self.clones.append(element)
-                if len(self.bioses) > 0:
-                    _tryLogger_(log=f'Bioses: {len(self.bioses)}', level='info')
-                if len(self.parents) > 0:
-                    _tryLogger_(log=f'Parent ROMs: {len(self.parents)}', level='info')
-                if len(self.bioses) > 0:
-                    _tryLogger_(log=f'Clone ROMs: {len(self.clones)}', level='info')
+                                clones.append(element)
+                if len(bioses) > 0:
+                    self.bioses = tuple(bioses)
+                    _tryLogger_(log=f'Bioses: {len(self.bioses)}',
+                                level='info')
+                if len(parents) > 0:
+                    self.parents = tuple(parents)
+                    _tryLogger_(log=f'Parent ROMs: {len(self.parents)}',
+                                level='info')
+                if len(clones) > 0:
+                    self.clones = tuple(clones)
+                    _tryLogger_(log=f'Clone ROMs: {len(self.clones)}',
+                                level='info')
             else:
                 _tryLogger_(log='No game elements found', level='error')
         except Exception as e:
@@ -73,37 +82,152 @@ class Romset():
                 raise
         return True
     
-    def getData(self, set: str, data: str) -> None:
+    def getData(self, rSet: Literal['bioses', 'parents', 'clones', 'all']
+                = 'all') -> dict | None:
         """
-        Retrieve specific data elements based on the provided set and data parameters.
+        Retrieve specific data elements based on the provided set.
 
         Args:
-            set (str): The data set to retrieve. Valid values are 'bioses', 'parents',
-            'clones', or 'all'.
-            
-            data (str): The type of data to retrieve. Valid values are 'name',
-            'description', 'year', 'video', 'driver', 'roms'.
+            rSet (str): The data set to retrieve. Valid values are 'bioses', 'parents' or
+            'clones'; note: nothing = all
 
         Raises:
             ValueError: If the set or data parameter has an invalid value.
 
-        Returns:
-            List[str]: A list containing the requested data elements.
+        Return a dict or None:
+        {
+            "name": {
+                "attributes": {
+                    "name": str,
+                    ...
+                },
+                "subelements": {
+                    "comment": str,
+                    "description": str,
+                    "year": int | str,
+                    "manufacturer": str,
+                    "rom": {
+                        "name1": {
+                            "name": str,
+                            "size": int | str,
+                            "crc": str
+                            ...
+                        },
+                        "name2": {
+                            "name": str,
+                            "size": int | str,
+                            "crc": str,
+                            "sha": str
+                            ...
+                        },
+                        ...
+                    },
+                    "video": {
+                        ...
+                    },
+                    "driver": {
+                        "status": bool
+                        ...
+                    }
+                    ...
+                }
+            }
+        }
+        
+        Where possible datas are converted to int and bool
         """
-        if set not in ('bioses', 'parents', 'clones', 'all'):
-            raise ValueError(f"Invalid set value: {set}")
-        if data not in ('firstline', 'comment', 'description', 'year', 'video', 'driver',
-                         'roms'):
-            raise ValueError(f"Invalid data value: {data}")
-        if set == 'all':
-            temp = self.bioses + self.parents + self.clones
+        if rSet not in ('bioses', 'parents', 'clones', 'all'):
+            raise ValueError(f"Invalid set value: {rSet}")
+        if rSet == 'all':
+            if hasattr(self, 'parents'):
+                temp = self.parents
+            if hasattr(self, 'clones'):
+                temp = self.parents + self.clones
+            if hasattr(self, 'bioses'):
+                temp = self.parents + self.clones + self.bioses
         else:
-            temp = getattr(self, set)
-        for element in temp:
-            pass
-            # print(element.attrib.get(key=data))  # type: ignore
+            if hasattr(self, rSet):
+                temp = getattr(self, rSet)
+        if 'temp' in locals().keys():
+            if isinstance(locals()['temp'], tuple) and len(locals()['temp']) > 0:
+                reponse: dict = {}
+                for element in temp: # type: ignore
+                    if element.tag == 'game':
+                        game = element.attrib.get('name')
+                        reponse.update({game: {'attributes': {}, 'subelements': {}}})
+                        for key, value in element.attrib.items():
+                            if value is not None:
+                                if key == 'isbios':
+                                    if value == 'yes':
+                                        reponse[game]['attributes'].update({key: True})
+                                    else:
+                                        reponse[game]['attributes'].update({key: value})
+                                else:
+                                    reponse[game]['attributes'].update({key: value})
+                        for subelement in element:
+                            if subelement.tag == 'comment':
+                                reponse[game]['subelements'].update({subelement.tag: subelement.text})
+                            elif subelement.tag == 'description':
+                                reponse[game]['subelements'].update({subelement.tag: subelement.text})
+                            elif subelement.tag == 'year':
+                                try:
+                                    newValue = int(getattr(subelement, 'text'))
+                                    reponse[game]['subelements'].update({subelement.tag: newValue})
+                                except Exception as e:
+                                        _tryLogger_(log=f'Error converting year into integer for {str(object=game)}: {e}')
+                                        reponse[game]['subelements'].update({subelement.tag: subelement.text})
+                            elif subelement.tag == 'manufacturer':
+                                reponse[game]['subelements'].update({subelement.tag: subelement.text})
+                            elif subelement.tag == 'rom':
+                                rom = subelement.attrib.get('name')
+                                if not subelement.tag in reponse[game]['subelements'].keys():
+                                    reponse[game]['subelements'].update({subelement.tag: {}})
+                                reponse[game]['subelements'][subelement.tag].update({rom: {}})
+                                for key, value in subelement.attrib.items():
+                                    if value is not None:
+                                        if key == 'size':
+                                            try:
+                                                newValue = int(value)
+                                                reponse[game]['subelements'][subelement.tag][rom].update({key: newValue})
+                                            except Exception as e:
+                                                _tryLogger_(log=f'Error converting year into integer for {str(object=game)}: {e}')
+                                                reponse[game]['subelements'][subelement.tag][rom].update({key: value})
+                                        else:
+                                            reponse[game]['subelements'][subelement.tag][rom].update({key: value})
+                            elif subelement.tag == 'video':
+                                reponse[game]['subelements'].update({subelement.tag: {}})
+                                for key, value in subelement.items():
+                                    if value is not None:
+                                        if key in {'width', 'height', 'aspectx', 'aspecty'}:
+                                            try:
+                                                newValue = int(value)
+                                                reponse[game]['subelements'][subelement.tag].update({key: newValue})
+                                            except Exception as e:
+                                                _tryLogger_(log=f'Error converting video data into integer for {str(object=game)}: {e}')
+                                                reponse[game]['subelements'][subelement.tag].update({key: value})
+                                        else:
+                                            reponse[game]['subelements'][subelement.tag].update({key: value})
+                            elif subelement.tag == 'driver':
+                                reponse[game]['subelements'].update({subelement.tag: {}})
+                                for key, value in subelement.items():
+                                    if value is not None:
+                                        if key == 'status':
+                                            if value == 'good':
+                                                reponse[game]['subelements'][subelement.tag].update({key: True})
+                                            elif value == 'bad':
+                                                reponse[game]['subelements'][subelement.tag].update({key: False})
+                                            else:
+                                                reponse[game]['subelements'][subelement.tag].update({key: value})
+                                        else:
+                                            reponse[game]['subelements'][subelement.tag].update({key: value})
+                            else:
+                                reponse[game]['subelements'].update({subelement.tag: subelement.text})
+                    else:
+                        raise ValueError(f'Non-game element found scanning {rSet}')
+                return reponse
+            return None
+        return None
 
-    
 def _tryLogger_(log: Any, level: Literal['debug', 'info', 'warning', 'error',
                 'critical'] = 'debug') -> None:
     if thisLogger is not None:

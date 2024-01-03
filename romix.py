@@ -5,11 +5,10 @@ import platform
 import colorlog
 import argparse
 import os
+import json
 from typing import Any, Literal
 from romset import Romset
 from ini import iniSettingsCheck, settings
-import xmltodict
-import lxml
 
 """
 Defining root variables
@@ -87,6 +86,8 @@ def argparsing() -> Romset | None:
     parser.add_argument('-f', '--feed', metavar='folder',
                         nargs='+', # feed can take more than one path
                         type=foldersFeed, help='Path to feeding folder')
+    parser.add_argument('-rc', '--recursive', help='Enable recursive scanning.',
+                        action='store_true')
     try:
         args = parser.parse_args()
         _tryLogger_(log='Ok, romset descriptor found', level='debug')
@@ -105,13 +106,35 @@ def argparsing() -> Romset | None:
     return None
 
 def scanner(romset: Romset, arguments: argparse.Namespace):
-    print(arguments)
-    with open(file="/home/nikoh/Scrivania/romix/DAT/FinalBurn.dat", mode="r", encoding="utf-8") as file:
-        doc = xmltodict.parse(xml_input=file.read())
-        print(doc)
-    # fileNumber = os.listdir(arguments.romset)
-    # romset.getData(set='bioses', data='name')
-    # print(romset.bioses[8].find(path='year').text)
+    data = romset.getData()
+    if data is not None:
+        all_files = []
+        all_dirs = []
+        if arguments.recursive:
+            _tryLogger_(log='Recursive mode enable...')
+            for root, dirs, files in os.walk(top=arguments.romset):
+                for dir_name in dirs:
+                    dir_path = os.path.join(root, dir_name)
+                    all_dirs.append(dir_path)
+                for file_name in files:
+                    file_path = os.path.join(root, file_name)
+                    all_files.append(file_path)
+        else:
+            _tryLogger_(log='Recursive mode disabled (default)...')
+            for entry in os.listdir(arguments.romset):
+                full_path = os.path.join(arguments.romset, entry)
+                if os.path.isfile(path=full_path):
+                    all_files.append(full_path)
+                elif os.path.isdir(s=full_path):
+                    all_dirs.append(full_path)
+        for game in data.keys():
+            for basename in all_dirs:
+                if os.path.basename(basename):
+                    print('ok')
+                else:
+                    print('error')
+    else:
+        print('nessuno')
 
 def main() -> None:
     if os_name not in supportedOs:
