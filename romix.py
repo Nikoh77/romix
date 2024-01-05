@@ -88,25 +88,17 @@ def argparsing() -> Romset | None:
                         type=foldersFeed, help='Path to feeding folder')
     parser.add_argument('-rc', '--recursive', help='Enable recursive scanning.',
                         action='store_true')
-    try:
-        args = parser.parse_args()
-        _tryLogger_(log='Ok, romset descriptor found', level='debug')
-        with open(file=args.dat.name, mode="r", encoding="utf-8") as file:
-            romset = Romset(descriptor=file, logger=logger)
-            _tryLogger_(log='Ok, descriptor parsing has been completed successfully', level='debug' )
-            if args.romset:
-                scanner(romset=romset, arguments=args)
-    except SystemExit as e:
-        if e.code == 2:
-            _tryLogger_(log="Unrecognized or unprovided arguments.", level='critical')
-            # TODO Gestione dell'eccezione facendo qualcosa oppure cancellare la
-            # gestione e lasciarlo gestire da argparser
-        else:
-            raise  # Raise exception if different from SystemExit
+    args = parser.parse_args()
+    _tryLogger_(log='Ok, romset descriptor found', level='debug')
+    with open(file=args.dat.name, mode="r", encoding="utf-8") as file:
+        romset = Romset(descriptor=file, logger=logger)
+        _tryLogger_(log='Ok, descriptor parsing has been completed successfully', level='debug' )
+        if args.romset:
+            scanner(romset=romset, arguments=args)
     return None
 
 def scanner(romset: Romset, arguments: argparse.Namespace):
-    data = romset.getData()
+    data = romset.getGames()
     if data is not None:
         all_files = []
         all_dirs = []

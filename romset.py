@@ -25,23 +25,23 @@ class Romset():
                         level='critical')
             sys.exit(0)
     
-    def extract_data(self) -> bool:
-        """
-        Extract header data from the XML descriptor using lxml.
-        """
-        bioses: list[etree._Element] = []
-        parents: list[etree._Element] = []
-        clones: list[etree._Element] = []
-        parser = etree.XMLParser(remove_blank_text=True) # some parser options here
-        try:
-            tree: etree._ElementTree = etree.parse(source=self.descriptor,
-                                                   parser=parser)
-            self.header = tree.find(path='//header')
-            if self.header is None:
-                _tryLogger_(log='No header found', level='warning')
-            else:
+    def __getDocType__(self, data: etree.DocInfo) -> bool:
+        docInfo: dict = {}
+        for prop_name in dir(data):
+            if not prop_name.startswith("__"):
+                prop_value = getattr(data, prop_name)
+                docInfo.update({prop_name: prop_value})
+        if len(docInfo) > 0:
+            if 'system_url' in docInfo.keys():
+                if docInfo['system_url'] != 'http://www.logiqx.com/Dats/datafile.dtd':
+                    return False
+        return True
+
+    def __getHeader__(self, data: etree._Element | None) -> bool:
+        if data is not None:
+            if len(data) > 0:
                 header_data: list[str] = ['Working with provided DAT:']
-                for i in self.header:
+                for i in data:
                     header_data.append(f'\n')
                     if i.tag is not None:
                         header_data.append(f'{i.tag}:')
@@ -50,31 +50,61 @@ class Romset():
                     if len(i.attrib) != 0:
                         header_data.append(f' {i.attrib}')
                 _tryLogger_(log=''.join(header_data), level='info')
-            elements: etree._XPathObject = tree.xpath(_path='//game')
+                return True
+        return False
+    
+    def __getElements__(self, elements) -> bool:
+        bioses: list[etree._Element] = []
+        parents: list[etree._Element] = []
+        clones: list[etree._Element] = []
+        try:
             if isinstance(elements, list):
-                for element in elements:
-                    if isinstance(element, etree._Element):
-                        if element.get(key='isbios') == 'yes':
-                            bioses.append(element)
-                        else:
-                            if element.get(key='cloneof') is None:
-                                parents.append(element)
+                if len(elements) > 0:
+                    for element in elements:
+                        if isinstance(element, etree._Element):
+                            if element.get(key='isbios') == 'yes':
+                                bioses.append(element)
                             else:
-                                clones.append(element)
-                if len(bioses) > 0:
-                    self.bioses = tuple(bioses)
-                    _tryLogger_(log=f'Bioses: {len(self.bioses)}',
-                                level='info')
-                if len(parents) > 0:
-                    self.parents = tuple(parents)
-                    _tryLogger_(log=f'Parent ROMs: {len(self.parents)}',
-                                level='info')
-                if len(clones) > 0:
-                    self.clones = tuple(clones)
-                    _tryLogger_(log=f'Clone ROMs: {len(self.clones)}',
-                                level='info')
-            else:
+                                if element.get(key='cloneof') is None:
+                                    parents.append(element)
+                                else:
+                                    clones.append(element)
+                    if len(bioses) > 0:
+                        self.bioses = tuple(bioses)
+                        _tryLogger_(log=f'Bioses: {len(self.bioses)}',
+                                    level='info')
+                    if len(parents) > 0:
+                        self.parents = tuple(parents)
+                        _tryLogger_(log=f'Parent ROMs: {len(self.parents)}',
+                                    level='info')
+                    if len(clones) > 0:
+                        self.clones = tuple(clones)
+                        _tryLogger_(log=f'Clone ROMs: {len(self.clones)}',
+                                    level='info')
+                    if ('bioses' or 'parents' or 'clones') in locals().keys():
+                        return True
+            return False
+        except Exception as e:
+            _tryLogger_(log='An error occurred retrieving parents, clones and'
+                        'bioses')
+            return False
+    
+    def extract_data(self) -> bool:
+        """
+        Extract header data from the XML descriptor using lxml.
+        """
+        parser = etree.XMLParser(remove_blank_text=True) # some parser options here
+        try:
+            tree: etree._ElementTree = etree.parse(source=self.descriptor,
+                                                   parser=parser)
+            if not self.__getDocType__(data=tree.docinfo):
+                _tryLogger_(log='Descriptor is not of type "logiqx",'
+                                'errors may occur...', level='warning')
+            if not self.__getHeader__(data=tree.find(path='//header')):
+                _tryLogger_(log='No header found', level='warning')
+            if not self.__getElements__(elements=tree.xpath(_path='//game')):
                 _tryLogger_(log='No game elements found', level='error')
+                return False
         except Exception as e:
             if isinstance(e, etree.XMLSyntaxError):
                 return False
@@ -82,7 +112,7 @@ class Romset():
                 raise
         return True
     
-    def getData(self, rSet: Literal['bioses', 'parents', 'clones', 'all']
+    def getGames(self, rSet: Literal['bioses', 'parents', 'clones', 'all']
                 = 'all') -> dict | None:
         """
         Retrieve specific data elements based on the provided set.
