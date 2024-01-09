@@ -1,4 +1,4 @@
-from typing import IO, Optional, Literal, Any
+from typing import IO, Optional, Literal, Any, Union
 from logging import Logger
 from lxml import etree
 import sys
@@ -20,40 +20,53 @@ class Romset():
         global thisLogger
         thisLogger = logger
         self.descriptor = descriptor
-        if not self.extract_data():
+        if not self.__extractData__():
             _tryLogger_(log='Cannot extract data, syntax error parsing xml file',
                         level='critical')
             sys.exit(0)
     
-    def __getDocType__(self, data: etree.DocInfo) -> bool:
+    def __getDocInfo__(self, data: etree.DocInfo) -> bool:
+        """
+        Extract DOCTYPE data from the XML descriptor using lxml
+        and store it in a dictionary named docInfo
+        """
         docInfo: dict = {}
-        for prop_name in dir(data):
+        # for prop_name in dir(data):
+        for prop_name in data.__dir__():
             if not prop_name.startswith("__"):
                 prop_value = getattr(data, prop_name)
                 docInfo.update({prop_name: prop_value})
         if len(docInfo) > 0:
-            if 'system_url' in docInfo.keys():
-                if docInfo['system_url'] != 'http://www.logiqx.com/Dats/datafile.dtd':
-                    return False
-        return True
+            self.docInfo = docInfo
+            _tryLogger_(log='Doc info as been retrieved', level='debug')
+            return True
+        return False
 
     def __getHeader__(self, data: etree._Element | None) -> bool:
+        """
+        Extract header data from the XML descriptor using lxml
+        and store it in a dictionary named header
+        """
         if data is not None:
             if len(data) > 0:
-                header_data: list[str] = ['Working with provided DAT:']
+                header_data: dict = {}
                 for i in data:
-                    header_data.append(f'\n')
-                    if i.tag is not None:
-                        header_data.append(f'{i.tag}:')
+                    header_data.update({i.tag: {}})
                     if i.text is not None:
-                        header_data.append(f' {i.text}')
+                        header_data[i.tag]['text'] = i.text
                     if len(i.attrib) != 0:
-                        header_data.append(f' {i.attrib}')
-                _tryLogger_(log=''.join(header_data), level='info')
-                return True
+                        header_data[i.tag]['attributes'] = i.attrib
+                if header_data:
+                    self.header = header_data
+                    _tryLogger_(log='Header as been retrieved', level='debug')
+                    return True
         return False
     
-    def __getElements__(self, elements) -> bool:
+    def __extractElements__(self, elements) -> bool:
+        """
+        Extract games and roms data from the XML descriptor using lxml
+        keeping it in etree._Elements
+        """
         bioses: list[etree._Element] = []
         parents: list[etree._Element] = []
         clones: list[etree._Element] = []
@@ -65,10 +78,18 @@ class Romset():
                             if element.get(key='isbios') == 'yes':
                                 bioses.append(element)
                             else:
-                                if element.get(key='cloneof') is None:
-                                    parents.append(element)
+                                if 'id' in self.header.keys():
+                                    # Working with No-Intro standard dat
+                                    if element.get(key='cloneofid') is None:
+                                        parents.append(element)
+                                    else:
+                                        clones.append(element)
                                 else:
-                                    clones.append(element)
+                                    # Working with Logiqx standard dat
+                                    if element.get(key='cloneof') is None:
+                                        parents.append(element)
+                                    else:
+                                        clones.append(element)
                     if len(bioses) > 0:
                         self.bioses = tuple(bioses)
                         _tryLogger_(log=f'Bioses: {len(self.bioses)}',
@@ -85,32 +106,77 @@ class Romset():
                         return True
             return False
         except Exception as e:
-            _tryLogger_(log='An error occurred retrieving parents, clones and'
+            _tryLogger_(log='An error occurred retrieving parents, clones and '
                         'bioses')
             return False
     
-    def extract_data(self) -> bool:
+    def __extractData__(self) -> bool:
         """
-        Extract header data from the XML descriptor using lxml.
+        Data extraction manager.
         """
+        # Defining game nodeTags, keys are used to scan for some notehead in header and 
+        # values are used to scan for game elements
+        nodeTags = {
+            'no-intro':['game'],
+            'finalburn':['game'],
+            'mame':['game', 'machine']
+        }
+        issuers: tuple[str, ...] = ('logiqx', 'no-intro') # Words to search for in doc info
+        issuer: str | None = None # If found in the doc info
+        hasId: bool = False # If header has ID field
+        noteHead: str | None = None # If found in the header
+        
         parser = etree.XMLParser(remove_blank_text=True) # some parser options here
         try:
-            tree: etree._ElementTree = etree.parse(source=self.descriptor,
-                                                   parser=parser)
-            if not self.__getDocType__(data=tree.docinfo):
-                _tryLogger_(log='Descriptor is not of type "logiqx",'
-                                'errors may occur...', level='warning')
+            tree = etree.parse(source=self.descriptor, parser=parser)
+            if self.__getDocInfo__(data=tree.docinfo): # retrieving xml DOCInfo
+                for info in self.docInfo:
+                    if type(self.docInfo[info]) == str:
+                        for i in issuers:
+                            if i in self.docInfo[info]:
+                                issuer = i
+                                _tryLogger_(log=f'DOC Type seems like {issuer}'
+                                            f' - found in "{info}" DOC Info '
+                                            'tag', level='debug')
+                                break
+                    if issuer != None:
+                        break
+                if issuer is None:
+                        _tryLogger_(log='Unknow xml DOC Type', level='debug')
+            else:
+                _tryLogger_(log='No xml DOC info found', level='warning')
+            # retrieving xml Header
             if not self.__getHeader__(data=tree.find(path='//header')):
-                _tryLogger_(log='No header found', level='warning')
-            if not self.__getElements__(elements=tree.xpath(_path='//game')):
-                _tryLogger_(log='No game elements found', level='error')
+                _tryLogger_(log='No header found', level='error')
                 return False
+            if 'id' in self.header.keys():
+                hasId = True # Descriptor has ID
+            for element in self.header: # retrieving some "unique" notehead
+                for n in nodeTags.keys():
+                    if n in self.header[element]['text'].lower():
+                        noteHead = n
+                        _tryLogger_(log=f'Header seems like {noteHead} - '
+                                    f'found in "{element}" header tag')
+                        break
+                if noteHead != None:
+                    break 
+            if noteHead is None:
+                _tryLogger_(log=f'Descriptor is of unknow type', level='error')
+                return False
+            schema = getWeight(issuer, hasId, noteHead):
+                pass
+            # nodeTag = nodeTags.get(schema)
+            # if not self.__extractElements__(elements=tree.xpath(_path='//'+f'{nodeTag}')):
+            #     _tryLogger_(log=f'No game elements found with tag "{nodeTag}"', level='error')
+            #     return False
         except Exception as e:
             if isinstance(e, etree.XMLSyntaxError):
                 return False
             else:
                 raise
         return True
+    
+    def getWeight(self, issuer, hasId, noteHead)
     
     def getGames(self, rSet: Literal['bioses', 'parents', 'clones', 'all']
                 = 'all') -> dict | None:
